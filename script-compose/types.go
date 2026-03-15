@@ -8,6 +8,7 @@ type Service struct {
 	Entrypoint    string   `yaml:"entrypoint"`
 	Environment   []string `yaml:"environment"`
 	Networks      []string `yaml:"networks"`
+	Volumes       []string `yaml:"volumes,omitempty"`
 	DependsOn     []string `yaml:"depends_on,omitempty"`
 }
 
@@ -26,6 +27,7 @@ func (c Client) toService() Service {
 			"CLI_LOG_LEVEL=DEBUG",
 		},
 		Networks:  []string{"testing_net"},
+		Volumes:   []string{"./client/config.yaml:/config.yaml"},
 		DependsOn: []string{"server"},
 	}
 }

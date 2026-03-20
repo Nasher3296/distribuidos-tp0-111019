@@ -19,8 +19,8 @@ func main() {
 	outputFile := os.Args[1]
 
 	numClients, err := strconv.Atoi(os.Args[2])
-	if err != nil || numClients < 1 {
-		fmt.Fprintln(os.Stderr, "error: la cantidad de clientes debe ser un entero positivo")
+	if err != nil || numClients < 0 {
+		fmt.Fprintln(os.Stderr, "error: la cantidad de clientes debe ser un entero no negativo")
 		os.Exit(1)
 	}
 

@@ -24,6 +24,12 @@ class Bet:
         self.birthdate = datetime.date.fromisoformat(birthdate)
         self.number = int(number)
 
+""" Deserializes a list of fields [agency, first_name, last_name, document, birthdate, number] into a Bet. """
+def bet_from_fields(fields: list[str]) -> 'Bet':
+    if len(fields) != 6:
+        raise ValueError(f"Expected 6 fields to build a Bet, got {len(fields)}")
+    return Bet(fields[0], fields[1], fields[2], fields[3], fields[4], fields[5])
+
 """ Checks whether a bet won the prize or not. """
 def has_won(bet: Bet) -> bool:
     return bet.number == LOTTERY_WINNER_NUMBER

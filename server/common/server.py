@@ -2,6 +2,9 @@ import signal
 import socket
 import logging
 
+from common.protocol import recv_fields, send_ack
+from common.utils import bet_from_fields, store_bets
+
 
 class Server:
     def __init__(self, port, listen_backlog):
@@ -42,20 +45,24 @@ class Server:
 
     def __handle_client_connection(self, client_sock):
         """
-        Read message from a specific client socket and closes the socket
+        Receive a bet from the client, persist it, and send an ACK.
 
         If a problem arises in the communication with the client, the
         client socket will also be closed
         """
         addr = client_sock.getpeername()
         try:
-            # TODO: Modify the receive to avoid short-reads
-            msg = client_sock.recv(1024).rstrip().decode('utf-8')
-            logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {msg}')
-            # TODO: Modify the send to avoid short-writes
-            client_sock.send("{}\n".format(msg).encode('utf-8'))
-        except OSError as e:
-            logging.error(f"action: receive_message | result: fail | error: {e}")
+            fields = recv_fields(client_sock)
+            bet = bet_from_fields(fields)
+            store_bets([bet])
+            logging.info(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')
+            send_ack(client_sock, True)
+        except Exception as e:
+            logging.error(f"action: receive_bet | result: fail | error: {e}")
+            try:
+                send_ack(client_sock, False)
+            except Exception:
+                pass
         finally:
             client_sock.close()
             logging.info(f'action: close_connection | result: success | ip: {addr[0]}')

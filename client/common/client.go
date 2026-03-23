@@ -1,15 +1,15 @@
 package common
 
 import (
-	"bufio"
-	"fmt"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/op/go-logging"
+
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/internal/bet"
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/internal/protocol"
 )
 
 var log = logging.MustGetLogger("log")
@@ -18,8 +18,7 @@ var log = logging.MustGetLogger("log")
 type ClientConfig struct {
 	ID            string
 	ServerAddress string
-	LoopAmount    int
-	LoopPeriod    time.Duration
+	Bet           bet.Bet
 }
 
 // Client Entity that encapsulates how
@@ -28,18 +27,13 @@ type Client struct {
 	conn   net.Conn
 }
 
-// NewClient Initializes a new client receiving the configuration
-// as a parameter
+// NewClient Initializes a new client receiving the configuration as a parameter
 func NewClient(config ClientConfig) *Client {
-	client := &Client{
-		config: config,
-	}
-	return client
+	return &Client{config: config}
 }
 
-// CreateClientSocket Initializes client socket. In case of
-// failure, error is printed in stdout/stderr and exit 1
-// is returned
+// createClientSocket Initializes client socket. In case of failure, error is
+// printed in stdout/stderr and exit 1 is returned
 func (c *Client) createClientSocket() error {
 	conn, err := net.Dial("tcp", c.config.ServerAddress)
 	if err != nil {
@@ -54,52 +48,38 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
-// StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop() {
+// Run connects to the server, sends the configured bet, and waits for confirmation
+func (c *Client) Run() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM)
 	defer signal.Stop(sigChan)
 
-	ticker := time.NewTicker(c.config.LoopPeriod)
-	defer ticker.Stop()
-
-	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
-		// Create the connection the server in every loop iteration. Send an
-		if err := c.createClientSocket(); err != nil {
-			return
-		}
-
-		// TODO: Modify the send to avoid short-write
-		fmt.Fprintf(
-			c.conn,
-			"[CLIENT %v] Message N°%v\n",
-			c.config.ID,
-			msgID,
-		)
-		msg, err := bufio.NewReader(c.conn).ReadString('\n')
+	if err := c.createClientSocket(); err != nil {
+		return
+	}
+	defer func() {
 		c.conn.Close()
 		log.Infof("action: close_connection | result: success | client_id: %v", c.config.ID)
+	}()
 
-		if err != nil {
-			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-				c.config.ID,
-				err,
-			)
-			return
-		}
+	go func() {
+		<-sigChan
+		log.Infof("action: sigterm_received | result: success | client_id: %v", c.config.ID)
+		c.conn.Close()
+	}()
 
-		log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
-			c.config.ID,
-			msg,
-		)
-
-		// Wait a time between sending one message and the next one
-		select {
-		case <-sigChan:
-			log.Infof("action: sigterm_received | result: success | client_id: %v", c.config.ID)
-			return
-		case <-ticker.C:
-		}
+	if err := protocol.SendBet(c.conn, c.config.Bet); err != nil {
+		log.Errorf("action: send_bet | result: fail | client_id: %v | error: %v",
+			c.config.ID, err)
+		return
 	}
-	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
+
+	if err := protocol.RecvAck(c.conn); err != nil {
+		log.Errorf("action: receive_ack | result: fail | client_id: %v | error: %v",
+			c.config.ID, err)
+		return
+	}
+
+	log.Infof("action: apuesta_enviada | result: success | dni: %v | numero: %v",
+		c.config.Bet.Document, c.config.Bet.Number)
 }

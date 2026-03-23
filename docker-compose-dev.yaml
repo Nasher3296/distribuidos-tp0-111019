@@ -1,0 +1,75 @@
+name: tp0
+
+services:
+  server:
+    container_name: server
+    image: server:latest
+    entrypoint: python3 /main.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOGGING_LEVEL=INFO
+    networks:
+      - testing_net
+    volumes:
+      - ./server/config.ini:/config.ini
+  client1:
+    container_name: client1
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=1
+      - CLI_LOG_LEVEL=INFO
+      - NOMBRE=Ahri
+      - APELLIDO=Vastaya
+      - DOCUMENTO=12345678
+      - NACIMIENTO=1990-03-17
+      - NUMERO=1234
+    networks:
+      - testing_net
+    volumes:
+      - ./client/config.yaml:/config.yaml
+    depends_on:
+      - server
+  client2:
+    container_name: client2
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=2
+      - CLI_LOG_LEVEL=INFO
+      - NOMBRE=Jinx
+      - APELLIDO=Kiramman
+      - DOCUMENTO=23456789
+      - NACIMIENTO=2001-05-20
+      - NUMERO=5678
+    networks:
+      - testing_net
+    volumes:
+      - ./client/config.yaml:/config.yaml
+    depends_on:
+      - server
+  client3:
+    container_name: client3
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=3
+      - CLI_LOG_LEVEL=INFO
+      - NOMBRE=Luxanna
+      - APELLIDO=Crownguard
+      - DOCUMENTO=34567890
+      - NACIMIENTO=1995-08-14
+      - NUMERO=9012
+    networks:
+      - testing_net
+    volumes:
+      - ./client/config.yaml:/config.yaml
+    depends_on:
+      - server
+
+networks:
+  testing_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.25.125.0/24

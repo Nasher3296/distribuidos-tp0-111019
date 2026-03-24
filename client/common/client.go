@@ -112,6 +112,17 @@ func (c *Client) readNextBatch(scanner *bufio.Scanner) []bet.Bet {
 	return batch
 }
 
+func (c *Client) receiveAck() error {
+	msgType, _, err := protocol.RecvMessage(c.conn)
+	if err != nil {
+		return err
+	}
+	if msgType != protocol.MsgTypeAckOk {
+		return fmt.Errorf("server responded with error status")
+	}
+	return nil
+}
+
 func (c *Client) sendBatch(bets []bet.Bet) error {
 	records := make([][]byte, len(bets))
 	for i, b := range bets {
@@ -123,7 +134,7 @@ func (c *Client) sendBatch(bets []bet.Bet) error {
 		return err
 	}
 
-	if err := protocol.RecvAck(c.conn); err != nil {
+	if err := c.receiveAck(); err != nil {
 		log.Errorf("action: receive_ack | result: fail | client_id: %v | error: %v", c.config.ID, err)
 		return err
 	}

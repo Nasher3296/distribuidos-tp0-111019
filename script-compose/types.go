@@ -24,7 +24,6 @@ func (c Client) toService() Service {
 		Entrypoint:    "/client",
 		Environment: []string{
 			fmt.Sprintf("CLI_ID=%d", c.ID),
-			"CLI_LOG_LEVEL=DEBUG",
 		},
 		Networks:  []string{"testing_net"},
 		DependsOn: []string{"server"},

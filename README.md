@@ -225,9 +225,6 @@ Validamos la creación de la network de docker
 docker network ls
 ````
 
-
-
-
 #### Implementación
 
 Se generó el script solicitado, el cual dentro ejecuta un script de go.
@@ -235,3 +232,42 @@ Se generó el script solicitado, el cual dentro ejecuta un script de go.
 Este script de go toma como base una plantilla del yaml al que queremos llegar, pero sin los clientes definidos: `/script-compose/docker-compose-base.yaml`.
 
 Se hace uso del pkg `gopkg.in/yaml.v2`.
+
+
+### Ej 2
+
+#### Como ejecutar
+
+Se ejecuta de la misma forma que el ej 1.
+
+```bash
+./generar-compose.sh docker-compose-dev.yaml 5
+make docker-compose-up
+```
+
+#### Validación
+
+Para validar el funcionamiento, se pueden modificar los archivos `server/config.ini` y/o `client/config.yaml` **sin reconstruir las imágenes**, ya que estos archivos se montan como volúmenes en los contenedores.
+
+Por ejemplo:
+- Cambiar `log.level` en `client/config.yaml` de `INFO` a `DEBUG` para ver mensajes más detallados en los logs del cliente.
+- Cambiar `batch.maxAmount` en `client/config.yaml` para modificar la cantidad de mensajes enviados por lote.
+- Cambiar `LOGGING_LEVEL` en `server/config.ini` para controlar la verbosidad del servidor.
+
+Luego de modificar cualquiera de estos valores, basta con reiniciar los contenedores para que los cambios tomen efecto:
+
+```bash
+make docker-compose-down
+make docker-compose-up
+```
+
+#### Implementación
+
+Se agregaron volúmenes en el compose generado para montar los archivos de configuración directamente desde el host:
+
+- `./client/config.yaml:/config.yaml` para cada cliente
+- `./server/config.ini:/config.ini` para el servidor
+
+Esto permite modificar la configuración en tiempo de desarrollo sin necesidad de regenerar las imágenes con `make docker-image`.
+
+También se eliminaron las env-var asociadas a las configs, tales como el log_level.

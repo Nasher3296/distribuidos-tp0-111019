@@ -1,9 +1,12 @@
 package common
 
 import (
+	"bufio"
+	"fmt"
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/op/go-logging"
@@ -17,7 +20,7 @@ var log = logging.MustGetLogger("log")
 type ClientConfig struct {
 	ID            string
 	ServerAddress string
-	Bet           bet.Bet
+	MaxBatchSize  int
 }
 
 type Client struct {
@@ -62,18 +65,73 @@ func (c *Client) Run() {
 		c.conn.Close()
 	}()
 
-	b := c.config.Bet
+	c.sendAllBets()
+}
 
-	if err := protocol.Send(c.conn, b.ToCsvBytes()); err != nil {
-		log.Errorf("action: send_bet | result: fail | client_id: %v | error: %v", c.config.ID, err)
+func (c *Client) sendAllBets() {
+	filePath := fmt.Sprintf("/data/agency-%s.csv", c.config.ID)
+	file, err := os.Open(filePath)
+	if err != nil {
+		log.Errorf("action: open_file | result: fail | client_id: %v | error: %v", c.config.ID, err)
 		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for {
+		batch := c.readNextBatch(scanner)
+		if len(batch) == 0 {
+			break
+		}
+		if err := c.sendBatch(batch); err != nil {
+			return
+		}
+	}
+}
+
+func (c *Client) readNextBatch(scanner *bufio.Scanner) []bet.Bet {
+	var batch []bet.Bet
+	for len(batch) < c.config.MaxBatchSize && scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, ",")
+		if len(fields) < 5 {
+			continue
+		}
+		batch = append(batch, bet.Bet{
+			Agency:    c.config.ID,
+			FirstName: fields[0],
+			LastName:  fields[1],
+			Document:  fields[2],
+			Birthdate: fields[3],
+			Number:    fields[4],
+		})
+	}
+	return batch
+}
+
+func (c *Client) sendBatch(bets []bet.Bet) error {
+	records := make([][]byte, len(bets))
+	for i, b := range bets {
+		records[i] = b.ToCsvBytes()
+	}
+
+	if err := protocol.SendBatch(c.conn, records); err != nil {
+		log.Errorf("action: send_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return err
 	}
 
 	if err := protocol.RecvAck(c.conn); err != nil {
 		log.Errorf("action: receive_ack | result: fail | client_id: %v | error: %v", c.config.ID, err)
-		return
+		return err
 	}
 
-	log.Infof("action: apuesta_enviada | result: success | dni: %v | numero: %v",
-		b.Document, b.Number)
+	for _, b := range bets {
+		log.Infof("action: apuesta_enviada | result: success | dni: %v | numero: %v",
+			b.Document, b.Number)
+	}
+
+	return nil
 }

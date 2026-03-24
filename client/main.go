@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/common"
-	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/internal/bet"
 )
 
 var log = logging.MustGetLogger("log")
@@ -34,13 +33,7 @@ func InitConfig() (*viper.Viper, error) {
 	v.BindEnv("id")
 	v.BindEnv("server.address")
 	v.BindEnv("log.level")
-
-	// Bet fields come from unprefixed env vars as specified by the protocol
-	v.BindEnv("nombre", "NOMBRE")
-	v.BindEnv("apellido", "APELLIDO")
-	v.BindEnv("documento", "DOCUMENTO")
-	v.BindEnv("nacimiento", "NACIMIENTO")
-	v.BindEnv("numero", "NUMERO")
+	v.BindEnv("batch.maxAmount")
 
 	// Try to read configuration from config file. If config file
 	// does not exists then ReadInConfig will fail but configuration
@@ -99,19 +92,10 @@ func main() {
 	// Print program config with debugging purposes
 	PrintConfig(v)
 
-	b := bet.Bet{
-		Agency:    v.GetString("id"),
-		FirstName: v.GetString("nombre"),
-		LastName:  v.GetString("apellido"),
-		Document:  v.GetString("documento"),
-		Birthdate: v.GetString("nacimiento"),
-		Number:    v.GetString("numero"),
-	}
-
 	clientConfig := common.ClientConfig{
 		ServerAddress: v.GetString("server.address"),
 		ID:            v.GetString("id"),
-		Bet:           b,
+		MaxBatchSize:  v.GetInt("batch.maxAmount"),
 	}
 
 	client := common.NewClient(clientConfig)

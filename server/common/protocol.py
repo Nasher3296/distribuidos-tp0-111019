@@ -21,6 +21,20 @@ def recv_fields(sock) -> list[str]:
     return payload.split(',')
 
 
+def recv_batch(sock) -> list[list[str]]:
+    """
+    Read a batch of CSV-encoded records from sock.
+    Returns a list of field lists, one per record.
+    Raises ConnectionError on EOF.
+    """
+    header = _recv_all(sock, 2)
+    length = struct.unpack('!H', header)[0]
+
+    payload = _recv_all(sock, length).decode('utf-8')
+    rows = [row for row in payload.split('\n') if row]
+    return [row.split(',') for row in rows]
+
+
 def send_ack(sock, success: bool):
     """Send a 1-byte ACK to the client (0x00=OK, 0x01=ERROR)."""
     sock.sendall(_ACK_OK if success else _ACK_ERROR)

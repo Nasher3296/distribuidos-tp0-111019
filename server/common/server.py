@@ -2,7 +2,7 @@ import signal
 import socket
 import logging
 
-from common.protocol import recv_fields, send_ack
+from common.protocol import recv_batch, send_ack
 from common.utils import bet_from_fields, store_bets
 
 
@@ -30,8 +30,6 @@ class Server:
                 self.__handle_client_connection(client_sock)
             except OSError as e:
                 if not self._running:
-                    logging.info("action: stop_server | result: success")
-                else:
                     logging.error(f"action: accept_connections | result: fail | error: {e}")
                 break
 
@@ -45,18 +43,22 @@ class Server:
 
     def __handle_client_connection(self, client_sock):
         """
-        Receive a bet from the client, persist it, and send an ACK.
+        Receive batches of bets from the client until the connection is closed.
 
         If a problem arises in the communication with the client, the
         client socket will also be closed
         """
         addr = client_sock.getpeername()
         try:
-            fields = recv_fields(client_sock)
-            bet = bet_from_fields(fields)
-            store_bets([bet])
-            logging.info(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')
-            send_ack(client_sock, True)
+            while True:
+                try:
+                    batch = recv_batch(client_sock)
+                except ConnectionError:
+                    break
+                bets = [bet_from_fields(fields) for fields in batch]
+                store_bets(bets)
+                logging.info(f'action: apuesta_recibida | result: success | cantidad: {len(bets)}')
+                send_ack(client_sock, True)
         except Exception as e:
             logging.error(f"action: receive_bet | result: fail | error: {e}")
             try:

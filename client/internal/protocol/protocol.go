@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -11,6 +12,11 @@ func Send(conn net.Conn, data []byte) error {
 	header := make([]byte, 2)
 	binary.BigEndian.PutUint16(header, uint16(len(data)))
 	return writeAll(conn, append(header, data...))
+}
+
+func SendBatch(conn net.Conn, records [][]byte) error {
+	payload := bytes.Join(records, []byte("\n"))
+	return Send(conn, payload)
 }
 
 func RecvAck(conn net.Conn) error {

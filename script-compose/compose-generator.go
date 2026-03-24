@@ -12,18 +12,6 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-type ClientBet struct {
-	Nombre     string `yaml:"nombre"`
-	Apellido   string `yaml:"apellido"`
-	Documento  string `yaml:"documento"`
-	Nacimiento string `yaml:"nacimiento"`
-	Numero     string `yaml:"numero"`
-}
-
-type ClientsConfig struct {
-	Clients []ClientBet `yaml:"clients"`
-}
-
 const serverTemplate = `  server:
     container_name: server
     image: server:latest
@@ -44,15 +32,11 @@ const clientTemplate = `  {{NAME}}:
     environment:
       - CLI_ID={{ID}}
       - CLI_LOG_LEVEL={{LOG_LEVEL}}
-      - NOMBRE={{NOMBRE}}
-      - APELLIDO={{APELLIDO}}
-      - DOCUMENTO={{DOCUMENTO}}
-      - NACIMIENTO={{NACIMIENTO}}
-      - NUMERO={{NUMERO}}
     networks:
       - testing_net
     volumes:
       - ./client/config.yaml:/config.yaml
+      - ./.data/agency-{{ID}}.csv:/data/agency-{{ID}}.csv
     depends_on:
       - server
 `
@@ -104,22 +88,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	clientsBetData, err := os.ReadFile(filepath.Join(dir, "clients.yaml"))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error leyendo clients.yaml: %v\n", err)
-		os.Exit(1)
-	}
-	var clientsCfg ClientsConfig
-	if err := yaml.Unmarshal(clientsBetData, &clientsCfg); err != nil {
-		fmt.Fprintf(os.Stderr, "error parseando clients.yaml: %v\n", err)
-		os.Exit(1)
-	}
-	if len(clientsCfg.Clients) < numClients {
-		fmt.Fprintf(os.Stderr, "error: clients.yaml tiene %d entradas pero se pidieron %d clientes\n",
-			len(clientsCfg.Clients), numClients)
-		os.Exit(1)
-	}
-
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "name: tp0\n\nservices:\n")
 
@@ -129,16 +97,11 @@ func main() {
 
 	for i := range numClients {
 		name := fmt.Sprintf("client%d", i+1)
-		bet := clientsCfg.Clients[i]
+		id := strconv.Itoa(i + 1)
 		sb.WriteString(applyTemplate(clientTemplate, map[string]string{
-			"{{NAME}}":       name,
-			"{{ID}}":         strconv.Itoa(i + 1),
-			"{{LOG_LEVEL}}":  clientCfg.Log.Level,
-			"{{NOMBRE}}":     bet.Nombre,
-			"{{APELLIDO}}":   bet.Apellido,
-			"{{DOCUMENTO}}":  bet.Documento,
-			"{{NACIMIENTO}}": bet.Nacimiento,
-			"{{NUMERO}}":     bet.Numero,
+			"{{NAME}}":      name,
+			"{{ID}}":        id,
+			"{{LOG_LEVEL}}": clientCfg.Log.Level,
 		}))
 	}
 

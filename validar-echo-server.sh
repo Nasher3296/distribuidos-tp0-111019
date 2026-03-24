@@ -2,7 +2,7 @@
 
 REQ="hello"
 
-RES=$(docker run --rm --network tp0_testing_net busybox sh -c "printf '$MESSAGE' | nc server 12345")
+RES=$(docker run --rm --network tp0_testing_net busybox sh -c "printf '$REQ' | nc server 12345")
 
 if [ "$REQ" = "$RES" ]; then
   echo "action: test_echo_server | result: success"

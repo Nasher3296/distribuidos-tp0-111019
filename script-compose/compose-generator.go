@@ -6,48 +6,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 
-	"gopkg.in/ini.v1"
 	"gopkg.in/yaml.v2"
 )
-
-const serverTemplate = `  server:
-    container_name: server
-    image: server:latest
-    entrypoint: python3 /main.py
-    environment:
-      - PYTHONUNBUFFERED=1
-      - LOGGING_LEVEL={{LOG_LEVEL}}
-    networks:
-      - testing_net
-    volumes:
-      - ./server/config.ini:/config.ini
-`
-
-const clientTemplate = `  {{NAME}}:
-    container_name: {{NAME}}
-    image: client:latest
-    entrypoint: /client
-    environment:
-      - CLI_ID={{ID}}
-      - CLI_LOG_LEVEL={{LOG_LEVEL}}
-    networks:
-      - testing_net
-    volumes:
-      - ./client/config.yaml:/config.yaml
-      - ./.data/agency-{{ID}}.csv:/data/agency-{{ID}}.csv
-    depends_on:
-      - server
-`
-
-const networkTemplate = `networks:
-  testing_net:
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.25.125.0/24
-`
 
 func main() {
 	if len(os.Args) != 3 {
@@ -58,65 +19,58 @@ func main() {
 	outputFile := os.Args[1]
 
 	numClients, err := strconv.Atoi(os.Args[2])
-	if err != nil || numClients < 1 {
-		fmt.Fprintln(os.Stderr, "error: la cantidad de clientes debe ser un entero positivo")
+	if err != nil || numClients < 0 {
+		fmt.Fprintln(os.Stderr, "error: la cantidad de clientes debe ser un entero no negativo")
 		os.Exit(1)
 	}
 
 	_, filename, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(filename)
 
-	serverCfg, err := ini.Load(filepath.Join(dir, "..", "server", "config.ini"))
+	data, err := os.ReadFile(filepath.Join(dir, "docker-compose-base.yaml"))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error leyendo config del server: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error leyendo yaml: %v\n", err)
 		os.Exit(1)
 	}
-	serverLogLevel := serverCfg.Section("DEFAULT").Key("LOGGING_LEVEL").String()
 
-	clientCfgData, err := os.ReadFile(filepath.Join(dir, "..", "client", "config.yaml"))
+	var compose Compose
+	if err := yaml.Unmarshal(data, &compose); err != nil {
+		fmt.Fprintf(os.Stderr, "error parseando yaml: %v\n", err)
+		os.Exit(1)
+	}
+
+	clientsBetData, err := os.ReadFile(filepath.Join(dir, "clients.yaml"))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error leyendo config del client: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error leyendo clients.yaml: %v\n", err)
 		os.Exit(1)
 	}
-	var clientCfg struct {
-		Log struct {
-			Level string `yaml:"level"`
-		} `yaml:"log"`
+	var clientsCfg struct {
+		Clients []ClientBet `yaml:"clients"`
 	}
-	if err := yaml.Unmarshal(clientCfgData, &clientCfg); err != nil {
-		fmt.Fprintf(os.Stderr, "error parseando config del client: %v\n", err)
+	if err := yaml.Unmarshal(clientsBetData, &clientsCfg); err != nil {
+		fmt.Fprintf(os.Stderr, "error parseando clients.yaml: %v\n", err)
 		os.Exit(1)
 	}
-
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "name: tp0\n\nservices:\n")
-
-	sb.WriteString(applyTemplate(serverTemplate, map[string]string{
-		"{{LOG_LEVEL}}": serverLogLevel,
-	}))
+	if len(clientsCfg.Clients) < numClients {
+		fmt.Fprintf(os.Stderr, "error: clients.yaml tiene %d entradas pero se pidieron %d clientes\n",
+			len(clientsCfg.Clients), numClients)
+		os.Exit(1)
+	}
 
 	for i := range numClients {
-		name := fmt.Sprintf("client%d", i+1)
-		id := strconv.Itoa(i + 1)
-		sb.WriteString(applyTemplate(clientTemplate, map[string]string{
-			"{{NAME}}":      name,
-			"{{ID}}":        id,
-			"{{LOG_LEVEL}}": clientCfg.Log.Level,
-		}))
+		client := Client{ID: i + 1, Bet: clientsCfg.Clients[i]}
+		service := client.toService()
+		compose.Services[service.ContainerName] = service
 	}
 
-	sb.WriteString("\n")
-	sb.WriteString(networkTemplate)
+	out, err := yaml.Marshal(&compose)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error serializando yaml: %v\n", err)
+		os.Exit(1)
+	}
 
-	if err := os.WriteFile(outputFile, []byte(sb.String()), 0644); err != nil {
+	if err := os.WriteFile(outputFile, out, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "error escribiendo archivo: %v\n", err)
 		os.Exit(1)
 	}
-}
-
-func applyTemplate(tmpl string, replacements map[string]string) string {
-	for k, v := range replacements {
-		tmpl = strings.ReplaceAll(tmpl, k, v)
-	}
-	return tmpl
 }

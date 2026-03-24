@@ -5,21 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net"
-
-	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/internal/bet"
 )
 
-func SendBet(conn net.Conn, b bet.Bet) error {
-	payload := fmt.Sprintf("%s,%s,%s,%s,%s,%s",
-		b.Agency, b.FirstName, b.LastName,
-		b.Document, b.Birthdate, b.Number)
-
-	data := []byte(payload)
-	msg := make([]byte, 2+len(data))
-	binary.BigEndian.PutUint16(msg[:2], uint16(len(data)))
-	copy(msg[2:], data)
-
-	return writeAll(conn, msg)
+func Send(conn net.Conn, data []byte) error {
+	header := make([]byte, 2)
+	binary.BigEndian.PutUint16(header, uint16(len(data)))
+	return writeAll(conn, append(header, data...))
 }
 
 func RecvAck(conn net.Conn) error {

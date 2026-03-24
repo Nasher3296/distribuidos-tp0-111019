@@ -179,3 +179,95 @@ Se proveen [pruebas automáticas](https://github.com/7574-sistemas-distribuidos/
 
 El incumplimiento de las pruebas es condición de desaprobación, pero su cumplimiento no es suficiente para la aprobación.  Se pide a los alumnos leer atentamente y **tener en cuenta** los criterios de corrección informados  [en el campus](https://campusgrado.fi.uba.ar/mod/page/view.php?id=73393).
 Respetar el formato y contenido las entradas de logs descritas en los ejercicios, pues son las que se chequean en cada uno de los tests.
+
+## Implementación del alumno
+
+### General
+
+A lo largo del desarrollo del TP se generan algunos archivos `.sh`. Los mismos por lo general van a requerir que se les otorgue permiso de ejecución. Para ello se debe ejecutar para c/u:
+
+```bash
+chmod +x <ARCHIVO.sh>
+```
+
+### Ej 1
+
+#### Como ejecutar
+
+```bash
+./generar-compose.sh <OUTPUT> <NUM_CLIENTS>
+```
+
+**OUTPUT:** Nombre del yaml resultante
+**OUTPUT:** Cantidad de clientes que se van a generar
+
+Luego de correr el script satisfactoriametne se obtiene el archivo **OUTPUT** como resultado. Se recomienda la ejecución con **OUTPUT=docker-compose-dev.yaml** para poder ejecutar los comandos del makefile.
+
+```bash
+./generar-compose.sh docker-compose-dev.yaml 5
+```
+
+
+Podemos levantar los contenedores
+```bash
+make docker-compose-up
+````
+
+Validar que se hayan levantado los contenedores deseados (1 server + los **NUM_CLIENTS** clientes)
+```bash
+docker ps -a
+```
+
+![docker-ps-a](readme_files/ej1/docker-ps-a.png)
+
+Validamos la creación de la network de docker
+```bash 
+docker network ls
+````
+
+#### Implementación
+
+Se generó el script solicitado, el cual dentro ejecuta un script de go.
+
+Este script de go toma como base una plantilla del yaml al que queremos llegar, pero sin los clientes definidos: `/script-compose/docker-compose-base.yaml`.
+
+Se hace uso del pkg `gopkg.in/yaml.v2`.
+
+
+### Ej 2
+
+#### Como ejecutar
+
+Se ejecuta de la misma forma que el ej 1.
+
+```bash
+./generar-compose.sh docker-compose-dev.yaml 5
+make docker-compose-up
+```
+
+#### Validación
+
+Para validar el funcionamiento, se pueden modificar los archivos `server/config.ini` y/o `client/config.yaml` **sin reconstruir las imágenes**, ya que estos archivos se montan como volúmenes en los contenedores.
+
+Por ejemplo:
+- Cambiar `log.level` en `client/config.yaml` de `INFO` a `DEBUG` para ver mensajes más detallados en los logs del cliente.
+- Cambiar `batch.maxAmount` en `client/config.yaml` para modificar la cantidad de mensajes enviados por lote.
+- Cambiar `LOGGING_LEVEL` en `server/config.ini` para controlar la verbosidad del servidor.
+
+Luego de modificar cualquiera de estos valores, basta con reiniciar los contenedores para que los cambios tomen efecto:
+
+```bash
+make docker-compose-down
+make docker-compose-up
+```
+
+#### Implementación
+
+Se agregaron volúmenes en el compose generado para montar los archivos de configuración directamente desde el host:
+
+- `./client/config.yaml:/config.yaml` para cada cliente
+- `./server/config.ini:/config.ini` para el servidor
+
+Esto permite modificar la configuración en tiempo de desarrollo sin necesidad de regenerar las imágenes con `make docker-image`.
+
+También se eliminaron las env-var asociadas a las configs, tales como el log_level.

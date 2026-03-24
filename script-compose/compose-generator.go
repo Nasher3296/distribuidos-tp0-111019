@@ -19,6 +19,7 @@ const serverTemplate = `  server:
     environment:
       - PYTHONUNBUFFERED=1
       - LOGGING_LEVEL={{LOG_LEVEL}}
+      - SERVER_NUMBER_OF_AGENCIES={{NUM_CLIENTS}}
     networks:
       - testing_net
     volumes:
@@ -92,7 +93,8 @@ func main() {
 	fmt.Fprintf(&sb, "name: tp0\n\nservices:\n")
 
 	sb.WriteString(applyTemplate(serverTemplate, map[string]string{
-		"{{LOG_LEVEL}}": serverLogLevel,
+		"{{LOG_LEVEL}}":   serverLogLevel,
+		"{{NUM_CLIENTS}}": strconv.Itoa(numClients),
 	}))
 
 	for i := range numClients {

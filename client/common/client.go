@@ -65,15 +65,21 @@ func (c *Client) Run() {
 		c.conn.Close()
 	}()
 
-	c.sendAllBets()
+	if err := c.sendAllBets(); err != nil {
+		return
+	}
+	if err := c.notifyDone(); err != nil {
+		return
+	}
+	c.queryWinners()
 }
 
-func (c *Client) sendAllBets() {
+func (c *Client) sendAllBets() error {
 	filePath := fmt.Sprintf("/data/agency-%s.csv", c.config.ID)
 	file, err := os.Open(filePath)
 	if err != nil {
 		log.Errorf("action: open_file | result: fail | client_id: %v | error: %v", c.config.ID, err)
-		return
+		return err
 	}
 	defer file.Close()
 
@@ -84,9 +90,10 @@ func (c *Client) sendAllBets() {
 			break
 		}
 		if err := c.sendBatch(batch); err != nil {
-			return
+			return err
 		}
 	}
+	return nil
 }
 
 func (c *Client) readNextBatch(scanner *bufio.Scanner) []bet.Bet {
@@ -112,17 +119,6 @@ func (c *Client) readNextBatch(scanner *bufio.Scanner) []bet.Bet {
 	return batch
 }
 
-func (c *Client) receiveAck() error {
-	msgType, _, err := protocol.RecvMessage(c.conn)
-	if err != nil {
-		return err
-	}
-	if msgType != protocol.MsgTypeAckOk {
-		return fmt.Errorf("server responded with error status")
-	}
-	return nil
-}
-
 func (c *Client) sendBatch(bets []bet.Bet) error {
 	records := make([][]byte, len(bets))
 	for i, b := range bets {
@@ -144,5 +140,51 @@ func (c *Client) sendBatch(bets []bet.Bet) error {
 			b.Document, b.Number)
 	}
 
+	return nil
+}
+
+func (c *Client) notifyDone() error {
+	if err := protocol.Send(c.conn, protocol.MsgTypeDone, []byte(c.config.ID)); err != nil {
+		log.Errorf("action: notify_done | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return err
+	}
+	if err := c.receiveAck(); err != nil {
+		log.Errorf("action: notify_done | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Client) queryWinners() {
+	if err := protocol.Send(c.conn, protocol.MsgTypeQueryWinners, []byte(c.config.ID)); err != nil {
+		log.Errorf("action: consulta_ganadores | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return
+	}
+
+	msgType, payload, err := protocol.RecvMessage(c.conn)
+	if err != nil {
+		log.Errorf("action: consulta_ganadores | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return
+	}
+	if msgType != protocol.MsgTypeWinners {
+		log.Errorf("action: consulta_ganadores | result: fail | client_id: %v | error: unexpected message type %d", c.config.ID, msgType)
+		return
+	}
+
+	var winners []string
+	if len(payload) > 0 {
+		winners = strings.Split(string(payload), string([]byte{protocol.RecordSeparator}))
+	}
+	log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(winners))
+}
+
+func (c *Client) receiveAck() error {
+	msgType, _, err := protocol.RecvMessage(c.conn)
+	if err != nil {
+		return err
+	}
+	if msgType != protocol.MsgTypeAckOk {
+		return fmt.Errorf("server responded with error status")
+	}
 	return nil
 }

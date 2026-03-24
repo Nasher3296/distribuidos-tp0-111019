@@ -38,10 +38,14 @@ def recv_batch(sock) -> list[list[str]]:
     return [row.split(FIELD_SEPARATOR) for row in rows]
 
 
+def send_message(sock, msg_type: int, payload: bytes = b''):
+    """Send a typed message in canonical format: [1B type][2B length][payload]."""
+    sock.sendall(bytes([msg_type]) + struct.pack('!H', len(payload)) + payload)
+
+
 def send_ack(sock, success: bool):
     """Send an ACK response in canonical format (empty payload)."""
-    msg_type = MSG_TYPE_ACK_OK if success else MSG_TYPE_ACK_ERROR
-    sock.sendall(bytes([msg_type]) + struct.pack('!H', 0))
+    send_message(sock, MSG_TYPE_ACK_OK if success else MSG_TYPE_ACK_ERROR)
 
 
 def _recv_all(sock, n: int) -> bytes:

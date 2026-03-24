@@ -26,9 +26,8 @@ func main() {
 
 	_, filename, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(filename)
-	yamlPath := filepath.Join(dir, "docker-compose-base.yaml")
 
-	data, err := os.ReadFile(yamlPath)
+	data, err := os.ReadFile(filepath.Join(dir, "docker-compose-base.yaml"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error leyendo yaml: %v\n", err)
 		os.Exit(1)
@@ -40,8 +39,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	clientsBetData, err := os.ReadFile(filepath.Join(dir, "clients.yaml"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error leyendo clients.yaml: %v\n", err)
+		os.Exit(1)
+	}
+	var clientsCfg struct {
+		Clients []ClientBet `yaml:"clients"`
+	}
+	if err := yaml.Unmarshal(clientsBetData, &clientsCfg); err != nil {
+		fmt.Fprintf(os.Stderr, "error parseando clients.yaml: %v\n", err)
+		os.Exit(1)
+	}
+	if len(clientsCfg.Clients) < numClients {
+		fmt.Fprintf(os.Stderr, "error: clients.yaml tiene %d entradas pero se pidieron %d clientes\n",
+			len(clientsCfg.Clients), numClients)
+		os.Exit(1)
+	}
+
 	for i := range numClients {
-		client := Client{ID: i + 1}
+		client := Client{ID: i + 1, Bet: clientsCfg.Clients[i]}
 		service := client.toService()
 		compose.Services[service.ContainerName] = service
 	}

@@ -211,7 +211,7 @@ Luego de correr el script satisfactoriametne se obtiene el archivo **OUTPUT** co
 Podemos levantar los contenedores
 ```bash
 make docker-compose-up
-````
+```
 
 Validar que se hayan levantado los contenedores deseados (1 server + los **NUM_CLIENTS** clientes)
 ```bash
@@ -223,7 +223,7 @@ docker ps -a
 Validamos la creación de la network de docker
 ```bash 
 docker network ls
-````
+```
 
 #### Implementación
 
@@ -244,8 +244,6 @@ Se ejecuta de la misma forma que el ej 1.
 ./generar-compose.sh docker-compose-dev.yaml 5
 make docker-compose-up
 ```
-
-#### Validación
 
 Para validar el funcionamiento, se pueden modificar los archivos `server/config.ini` y/o `client/config.yaml` **sin reconstruir las imágenes**, ya que estos archivos se montan como volúmenes en los contenedores.
 
@@ -271,3 +269,40 @@ Se agregaron volúmenes en el compose generado para montar los archivos de confi
 Esto permite modificar la configuración en tiempo de desarrollo sin necesidad de regenerar las imágenes con `make docker-image`.
 
 También se eliminaron las env-var asociadas a las configs, tales como el log_level.
+
+
+### Ej 3
+
+#### Como ejecutar
+
+
+```bash
+./validar-echo-server.sh
+```
+
+La idea es probarlo con el server levantado y caido
+
+Para ello, con el `.yaml` del compose ya generado:
+
+```bash
+make docker-compose-up
+./validar-echo-server.sh
+```
+
+Dado que se acaba de levantar el server, deberíamos recibir un `success`
+
+Ahora vamos a bajar el server y volver a probar
+
+```bash
+docker stop server
+./validar-echo-server.sh
+```
+
+Con el server detenido, ahora deberíamos recibir un `fail`
+
+#### Implementación
+
+Dado que se pide no instalar netcat en la máquina host, se realiza el request desde un contenedor efímero (el --rm del argumento)
+
+Se usa la imágen `busybox` ya que es la más ligera (incluso que alpine) que cuenta con netcat para cumplir la finalidad
+

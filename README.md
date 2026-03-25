@@ -362,3 +362,39 @@ def __handle_sigterm(self, *args):
     self._server_socket.close()
     logging.info("action: close_server_socket | result: success")
 ```
+
+
+
+### Ej 5
+
+#### Como ejecutar
+
+Generar el compose con el script y ejecutar con el make como se venía haciendo previamente.
+
+#### Implementación
+
+Lo primero y menos relevante. Para el script generador se armó un listado `clients.yaml` con el único fin de poder hacer dinámica la generación de clientes para este ejercicio. Esto incluye leer los clientes según el parámetro con el que se ejecuta el script y cargar sus datos como env-vars. En los siguientes puntos esto se remueve.
+
+Se definen capas bien separadas. Una es el protocolo, que define la comuniación. Por otro lado una propia del dominio, las bets/apuestas.
+
+
+El protocolo en este punto se define como mensajes de servidor por un lado y de cliente por el otro.
+Este comentario en `protocol.py` lo detalla bien
+
+```python
+#   Request  (client → server): [2 bytes uint16 BE: payload length][payload: UTF-8 CSV string]
+#   Response (server → client): [1 byte: 0x00=OK, 0x01=ERROR]
+```
+
+El cliente al hacer un request utiliza 2 bytes como header (big endian, como define el estándar de TCP) para indicar el tamaño del payload que acompaña al mensaje. El objetivo es que el server lea 2 bytes "fijos" y que a partir de estos pueda leer los N bytes "variables" que le siguen.
+
+El server por su parte, solamente responde un byte que puede significar un OK o un Error.
+
+
+Se hace uso de las configs del cliente:
+```yaml
+loop:
+  amount: 5
+  period: "5s"
+```
+Se utilizan para definir los reintentos al establecer la conexión inicial con el server.

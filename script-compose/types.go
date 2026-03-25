@@ -12,17 +12,8 @@ type Service struct {
 	Volumes       []string `yaml:"volumes,omitempty"`
 }
 
-type ClientBet struct {
-	Nombre     string `yaml:"nombre"`
-	Apellido   string `yaml:"apellido"`
-	Documento  string `yaml:"documento"`
-	Nacimiento string `yaml:"nacimiento"`
-	Numero     string `yaml:"numero"`
-}
-
 type Client struct {
-	ID  int
-	Bet ClientBet
+	ID int
 }
 
 func (c Client) toService() Service {
@@ -33,15 +24,11 @@ func (c Client) toService() Service {
 		Entrypoint:    "/client",
 		Environment: []string{
 			fmt.Sprintf("CLI_ID=%d", c.ID),
-			fmt.Sprintf("NOMBRE=%s", c.Bet.Nombre),
-			fmt.Sprintf("APELLIDO=%s", c.Bet.Apellido),
-			fmt.Sprintf("DOCUMENTO=%s", c.Bet.Documento),
-			fmt.Sprintf("NACIMIENTO=%s", c.Bet.Nacimiento),
-			fmt.Sprintf("NUMERO=%s", c.Bet.Numero),
 		},
 		Networks:  []string{"testing_net"},
 		DependsOn: []string{"server"},
-		Volumes:   []string{"./client/config.yaml:/config.yaml"},
+		Volumes: []string{"./client/config.yaml:/config.yaml",
+			fmt.Sprintf("./.data/agency-%d.csv:/data/agency-%d.csv", c.ID, c.ID)},
 	}
 }
 

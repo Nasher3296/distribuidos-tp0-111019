@@ -39,26 +39,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	clientsBetData, err := os.ReadFile(filepath.Join(dir, "clients.yaml"))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error leyendo clients.yaml: %v\n", err)
-		os.Exit(1)
-	}
-	var clientsCfg struct {
-		Clients []ClientBet `yaml:"clients"`
-	}
-	if err := yaml.Unmarshal(clientsBetData, &clientsCfg); err != nil {
-		fmt.Fprintf(os.Stderr, "error parseando clients.yaml: %v\n", err)
-		os.Exit(1)
-	}
-	if len(clientsCfg.Clients) < numClients {
-		fmt.Fprintf(os.Stderr, "error: clients.yaml tiene %d entradas pero se pidieron %d clientes\n",
-			len(clientsCfg.Clients), numClients)
-		os.Exit(1)
-	}
-
 	for i := range numClients {
-		client := Client{ID: i + 1, Bet: clientsCfg.Clients[i]}
+		client := Client{ID: i + 1}
 		service := client.toService()
 		compose.Services[service.ContainerName] = service
 	}

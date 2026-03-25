@@ -34,6 +34,8 @@ func InitConfig() (*viper.Viper, error) {
 	v.BindEnv("id")
 	v.BindEnv("server.address")
 	v.BindEnv("log.level")
+	v.BindEnv("loop.amount")
+	v.BindEnv("loop.period")
 
 	// Bet fields come from unprefixed env vars as specified by the protocol
 	v.BindEnv("nombre", "NOMBRE")
@@ -112,6 +114,8 @@ func main() {
 		ServerAddress: v.GetString("server.address"),
 		ID:            v.GetString("id"),
 		Bet:           b,
+		LoopAmount:    v.GetInt("loop.amount"),
+		LoopPeriod:    v.GetDuration("loop.period"),
 	}
 
 	client := common.NewClient(clientConfig)

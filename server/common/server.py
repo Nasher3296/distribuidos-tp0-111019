@@ -91,7 +91,7 @@ class Server:
                 winners = self._winners.get(agency_id, [])
                 response = RECORD_SEPARATOR.join(winners).encode('utf-8')
                 send_message(client_sock, MSG_TYPE_WINNERS, response)
-                logging.info(f'action: consulta_ganadores | result: success | agency_id: {agency_id} | cant_ganadores: {len(winners)}')
+                logging.info(f'action: winners_sent | result: success | agency_id: {agency_id} | cant_ganadores: {len(winners)}')
         except Exception as e:
             logging.error(f"action: respond_to_query | result: fail | ip: {addr[0]} | error: {e}")
         finally:

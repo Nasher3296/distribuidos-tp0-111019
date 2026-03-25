@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/op/go-logging"
 
@@ -23,6 +24,8 @@ type ClientConfig struct {
 	ID            string
 	ServerAddress string
 	MaxBatchSize  int
+	LoopAmount    int
+	LoopPeriod    time.Duration
 }
 
 type Client struct {
@@ -35,17 +38,22 @@ func NewClient(config ClientConfig) *Client {
 }
 
 func (c *Client) createClientSocket() error {
-	conn, err := net.Dial("tcp", c.config.ServerAddress)
-	if err != nil {
-		log.Criticalf(
-			"action: connect | result: fail | client_id: %v | error: %v",
-			c.config.ID,
-			err,
+	initial_amount := c.config.LoopAmount
+	for c.config.LoopAmount > 0 {
+		conn, err := net.Dial("tcp", c.config.ServerAddress)
+		if err == nil {
+			c.conn = conn
+			return nil
+		}
+		log.Errorf(
+			"action: connect | result: fail | client_id: %v | pending_retries: %v | error: %v",
+			c.config.ID, c.config.LoopAmount, err,
 		)
-		return err
+		time.Sleep(c.config.LoopPeriod)
+		c.config.LoopAmount--
 	}
-	c.conn = conn
-	return nil
+	log.Criticalf("action: connect | result: fail | client_id: %v | error: max retries reached", c.config.ID)
+	return fmt.Errorf("could not connect after %d attempts", initial_amount)
 }
 
 func (c *Client) Run() {

@@ -121,6 +121,7 @@ func (c *Client) readNextBatch(scanner *bufio.Scanner, pending *bet.Bet) ([]bet.
 		}
 		betSize := len(b.ToCsvBytes())
 		if batchBytes+betSize > maxBatchBytes {
+			log.Debug("action: read_next_batch | result: exceed max KBs | client_id: %v", c.config.ID)
 			return batch, &b
 		}
 		batch = append(batch, b)

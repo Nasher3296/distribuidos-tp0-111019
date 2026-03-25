@@ -50,7 +50,7 @@ class Server:
         """
         addr = client_sock.getpeername()
         try:
-            while True:
+            while self._running:
                 try:
                     batch = recv_batch(client_sock)
                 except ConnectionError:
@@ -60,7 +60,7 @@ class Server:
                 logging.info(f'action: apuesta_recibida | result: success | cantidad: {len(bets)}')
                 send_ack(client_sock, True)
         except Exception as e:
-            logging.error(f"action: receive_bet | result: fail | error: {e}")
+            logging.error(f"action: apuesta_recibida | result: fail | cantidad: {len(batch)}")
             try:
                 send_ack(client_sock, False)
             except Exception:

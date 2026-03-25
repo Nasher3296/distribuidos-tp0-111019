@@ -398,3 +398,29 @@ loop:
   period: "5s"
 ```
 Se utilizan para definir los reintentos al establecer la conexión inicial con el server.
+
+
+
+### Ej 6
+
+#### Como ejecutar
+
+Generar el compose con el script y ejecutar con el make como se venía haciendo previamente tras descomprimir los datasets zipeados.
+
+```bash
+unzip .data/dataset.zip -d .data/
+```
+
+#### Implementación
+
+Se elimina toda la lógica de la apuesta por cliente. En su lugar se pasan a leer los datasets correspondientes a c/u. Esto implica añadir un volúmen que monte el dataset propio de cada cliente en el mismo.
+
+Se implementa la lógica de los batches manteniendo la abstracción del lado del protocolo. (Se envían batches pero no se define de qué).
+Estos batches son las tiras de bytes, pero separadas por saltos de linea (tambien en bytes).
+El protocolo por el resto se mantiene igual.
+
+El cliente tiene 2 límites a la hora de armar los batches:
+1. **Límite de amount por config:** Delimita la cantidad máxima de bets que pueden incluirse en un batch independientemente de su tamaño. Es configurable en su `config.yaml`
+2. **Límite de KB's:** Delimia el máximo de bytes que se incluyen en un batch. Puede haber bets sumamente largas que sumadas no lleguen a alcanzar el número máx configurado, pero que sumando su peso excedan el umbral. No es configurable.
+
+La existencia de estos batches permite reducir la cantidad de mensajes enviados por red (y por ende reducir el overhead de los headers). Al realizarse la lectura del dataset on-demand (no cargar todo en memoria), si se detecta que la última bet leida causaría un exceso del máx en KB's de un batch, la misma se guarda en memoria y se reserva para la siguiente iteración.

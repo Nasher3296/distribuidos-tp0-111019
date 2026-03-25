@@ -306,3 +306,59 @@ Dado que se pide no instalar netcat en la máquina host, se realiza el request d
 
 Se usa la imágen `busybox` ya que es la más ligera (incluso que alpine) que cuenta con netcat para cumplir la finalidad
 
+
+### Ej 4
+
+#### Como ejecutar
+
+Con el server y/o clientes corriendo
+
+```bash
+docker ps -q -f "name=<service>" | xargs docker stop    
+```
+
+**<service>:** Reemplazar con `server` o `client1`, `client2`, etc.
+
+Luego revisar logs
+
+
+```bash
+docker logs <service>    
+```
+
+Se encuentran logs indicando la identificación del sigterm y la liberación de recursos. Por ej:
+
+> 2026-03-25 02:43:00 INFO     action: sigterm_received | result: success
+> 
+> 2026-03-25 02:43:00 INFO     action: close_server_socket | result: success
+
+#### Implementación
+
+En el loop del cliente se está escuchando un channel con el sigterm bindeado, esperando a recibir la notificación para abandonar el loop y con eso finalizar liberando los recursos.
+Al emplear este enfoque, modificamos el uso de `sleep` por un `ticker` que cumple la misma función de simular una espera, pero permitiendo la utilización del select para chequear el canal.
+
+```go
+sigChan := make(chan os.Signal, 1)
+signal.Notify(sigChan, syscall.SIGTERM)
+defer signal.Stop(sigChan)
+...
+for {
+    ...
+    select {
+		case <-sigChan:
+			log.Infof("action: sigterm_received | result: success | client_id: %v", c.config.ID)
+            	return
+		case <-ticker.C:
+    ...
+}
+```
+
+Por otro lado, en el server se define un handler de sigterm. El mismo cambia el estado del server a `running = false` y cierra el socket. Este cambio al estado sirve para identificar si una falla en la lectura del socket se da por un cierre planeado o no.
+
+```python
+def __handle_sigterm(self, *args):
+    logging.info("action: sigterm_received | result: success")
+    self._running = False
+    self._server_socket.close()
+    logging.info("action: close_server_socket | result: success")
+```

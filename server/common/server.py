@@ -21,8 +21,7 @@ class Server:
 
         self._store_lock = threading.Lock()
         self._agencies_done = 0
-        self._agencies_lock = threading.Lock()
-        self._lottery_done = threading.Event()
+        self._lottery_cond = threading.Condition()
         self._winners = {}
 
     def run(self):
@@ -70,7 +69,8 @@ class Server:
                     send_ack(client_sock, True)
                     break
 
-            self._lottery_done.wait()
+            with self._lottery_cond:
+                self._lottery_cond.wait_for(lambda: self._agencies_done == self._number_of_agencies)
 
             msg_type, payload = recv_message(client_sock)
             if msg_type == MSG_TYPE_QUERY_WINNERS:
@@ -90,11 +90,11 @@ class Server:
 
     def __notify_done(self):
         """Increment done counter; when all agencies are done, run the lottery."""
-        with self._agencies_lock:
+        with self._lottery_cond:
             self._agencies_done += 1
             if self._agencies_done == self._number_of_agencies:
                 self.__run_lottery()
-                self._lottery_done.set()
+                self._lottery_cond.notify_all()
 
     def __run_lottery(self):
         winners = {}

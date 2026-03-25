@@ -94,6 +94,8 @@ class Server:
             self._agencies_done += 1
             if self._agencies_done == self._number_of_agencies:
                 self.__run_lottery()
+                self._running = False
+                self._server_socket.close()
                 self._lottery_cond.notify_all()
 
     def __run_lottery(self):

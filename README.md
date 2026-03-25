@@ -211,7 +211,7 @@ Luego de correr el script satisfactoriametne se obtiene el archivo **OUTPUT** co
 Podemos levantar los contenedores
 ```bash
 make docker-compose-up
-````
+```
 
 Validar que se hayan levantado los contenedores deseados (1 server + los **NUM_CLIENTS** clientes)
 ```bash
@@ -223,7 +223,7 @@ docker ps -a
 Validamos la creación de la network de docker
 ```bash 
 docker network ls
-````
+```
 
 #### Implementación
 
@@ -244,8 +244,6 @@ Se ejecuta de la misma forma que el ej 1.
 ./generar-compose.sh docker-compose-dev.yaml 5
 make docker-compose-up
 ```
-
-#### Validación
 
 Para validar el funcionamiento, se pueden modificar los archivos `server/config.ini` y/o `client/config.yaml` **sin reconstruir las imágenes**, ya que estos archivos se montan como volúmenes en los contenedores.
 
@@ -271,3 +269,96 @@ Se agregaron volúmenes en el compose generado para montar los archivos de confi
 Esto permite modificar la configuración en tiempo de desarrollo sin necesidad de regenerar las imágenes con `make docker-image`.
 
 También se eliminaron las env-var asociadas a las configs, tales como el log_level.
+
+
+### Ej 3
+
+#### Como ejecutar
+
+
+```bash
+./validar-echo-server.sh
+```
+
+La idea es probarlo con el server levantado y caido
+
+Para ello, con el `.yaml` del compose ya generado:
+
+```bash
+make docker-compose-up
+./validar-echo-server.sh
+```
+
+Dado que se acaba de levantar el server, deberíamos recibir un `success`
+
+Ahora vamos a bajar el server y volver a probar
+
+```bash
+docker stop server
+./validar-echo-server.sh
+```
+
+Con el server detenido, ahora deberíamos recibir un `fail`
+
+#### Implementación
+
+Dado que se pide no instalar netcat en la máquina host, se realiza el request desde un contenedor efímero (el --rm del argumento)
+
+Se usa la imágen `busybox` ya que es la más ligera (incluso que alpine) que cuenta con netcat para cumplir la finalidad
+
+
+### Ej 4
+
+#### Como ejecutar
+
+Con el server y/o clientes corriendo
+
+```bash
+docker ps -q -f "name=<service>" | xargs docker stop    
+```
+
+**<service>:** Reemplazar con `server` o `client1`, `client2`, etc.
+
+Luego revisar logs
+
+
+```bash
+docker logs <service>    
+```
+
+Se encuentran logs indicando la identificación del sigterm y la liberación de recursos. Por ej:
+
+> 2026-03-25 02:43:00 INFO     action: sigterm_received | result: success
+> 
+> 2026-03-25 02:43:00 INFO     action: close_server_socket | result: success
+
+#### Implementación
+
+En el loop del cliente se está escuchando un channel con el sigterm bindeado, esperando a recibir la notificación para abandonar el loop y con eso finalizar liberando los recursos.
+Al emplear este enfoque, modificamos el uso de `sleep` por un `ticker` que cumple la misma función de simular una espera, pero permitiendo la utilización del select para chequear el canal.
+
+```go
+sigChan := make(chan os.Signal, 1)
+signal.Notify(sigChan, syscall.SIGTERM)
+defer signal.Stop(sigChan)
+...
+for {
+    ...
+    select {
+		case <-sigChan:
+			log.Infof("action: sigterm_received | result: success | client_id: %v", c.config.ID)
+            	return
+		case <-ticker.C:
+    ...
+}
+```
+
+Por otro lado, en el server se define un handler de sigterm. El mismo cambia el estado del server a `running = false` y cierra el socket. Este cambio al estado sirve para identificar si una falla en la lectura del socket se da por un cierre planeado o no.
+
+```python
+def __handle_sigterm(self, *args):
+    logging.info("action: sigterm_received | result: success")
+    self._running = False
+    self._server_socket.close()
+    logging.info("action: close_server_socket | result: success")
+```

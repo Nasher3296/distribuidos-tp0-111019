@@ -52,7 +52,7 @@ class Server:
         addr = client_sock.getpeername()
         agency_id = None
         try:
-            while True:
+            while self._running:
                 msg_type, payload = recv_message(client_sock)
 
                 if msg_type == MSG_TYPE_BATCH:

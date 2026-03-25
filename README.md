@@ -211,7 +211,7 @@ Luego de correr el script satisfactoriametne se obtiene el archivo **OUTPUT** co
 Podemos levantar los contenedores
 ```bash
 make docker-compose-up
-````
+```
 
 Validar que se hayan levantado los contenedores deseados (1 server + los **NUM_CLIENTS** clientes)
 ```bash
@@ -223,7 +223,7 @@ docker ps -a
 Validamos la creación de la network de docker
 ```bash 
 docker network ls
-````
+```
 
 #### Implementación
 
@@ -244,8 +244,6 @@ Se ejecuta de la misma forma que el ej 1.
 ./generar-compose.sh docker-compose-dev.yaml 5
 make docker-compose-up
 ```
-
-#### Validación
 
 Para validar el funcionamiento, se pueden modificar los archivos `server/config.ini` y/o `client/config.yaml` **sin reconstruir las imágenes**, ya que estos archivos se montan como volúmenes en los contenedores.
 
@@ -271,3 +269,158 @@ Se agregaron volúmenes en el compose generado para montar los archivos de confi
 Esto permite modificar la configuración en tiempo de desarrollo sin necesidad de regenerar las imágenes con `make docker-image`.
 
 También se eliminaron las env-var asociadas a las configs, tales como el log_level.
+
+
+### Ej 3
+
+#### Como ejecutar
+
+
+```bash
+./validar-echo-server.sh
+```
+
+La idea es probarlo con el server levantado y caido
+
+Para ello, con el `.yaml` del compose ya generado:
+
+```bash
+make docker-compose-up
+./validar-echo-server.sh
+```
+
+Dado que se acaba de levantar el server, deberíamos recibir un `success`
+
+Ahora vamos a bajar el server y volver a probar
+
+```bash
+docker stop server
+./validar-echo-server.sh
+```
+
+Con el server detenido, ahora deberíamos recibir un `fail`
+
+#### Implementación
+
+Dado que se pide no instalar netcat en la máquina host, se realiza el request desde un contenedor efímero (el --rm del argumento)
+
+Se usa la imágen `busybox` ya que es la más ligera (incluso que alpine) que cuenta con netcat para cumplir la finalidad
+
+
+### Ej 4
+
+#### Como ejecutar
+
+Con el server y/o clientes corriendo
+
+```bash
+docker ps -q -f "name=<service>" | xargs docker stop    
+```
+
+**<service>:** Reemplazar con `server` o `client1`, `client2`, etc.
+
+Luego revisar logs
+
+
+```bash
+docker logs <service>    
+```
+
+Se encuentran logs indicando la identificación del sigterm y la liberación de recursos. Por ej:
+
+> 2026-03-25 02:43:00 INFO     action: sigterm_received | result: success
+> 
+> 2026-03-25 02:43:00 INFO     action: close_server_socket | result: success
+
+#### Implementación
+
+En el loop del cliente se está escuchando un channel con el sigterm bindeado, esperando a recibir la notificación para abandonar el loop y con eso finalizar liberando los recursos.
+Al emplear este enfoque, modificamos el uso de `sleep` por un `ticker` que cumple la misma función de simular una espera, pero permitiendo la utilización del select para chequear el canal.
+
+```go
+sigChan := make(chan os.Signal, 1)
+signal.Notify(sigChan, syscall.SIGTERM)
+defer signal.Stop(sigChan)
+...
+for {
+    ...
+    select {
+		case <-sigChan:
+			log.Infof("action: sigterm_received | result: success | client_id: %v", c.config.ID)
+            	return
+		case <-ticker.C:
+    ...
+}
+```
+
+Por otro lado, en el server se define un handler de sigterm. El mismo cambia el estado del server a `running = false` y cierra el socket. Este cambio al estado sirve para identificar si una falla en la lectura del socket se da por un cierre planeado o no.
+
+```python
+def __handle_sigterm(self, *args):
+    logging.info("action: sigterm_received | result: success")
+    self._running = False
+    self._server_socket.close()
+    logging.info("action: close_server_socket | result: success")
+```
+
+
+
+### Ej 5
+
+#### Como ejecutar
+
+Generar el compose con el script y ejecutar con el make como se venía haciendo previamente.
+
+#### Implementación
+
+Lo primero y menos relevante. Para el script generador se armó un listado `clients.yaml` con el único fin de poder hacer dinámica la generación de clientes para este ejercicio. Esto incluye leer los clientes según el parámetro con el que se ejecuta el script y cargar sus datos como env-vars. En los siguientes puntos esto se remueve.
+
+Se definen capas bien separadas. Una es el protocolo, que define la comuniación. Por otro lado una propia del dominio, las bets/apuestas.
+
+
+El protocolo en este punto se define como mensajes de servidor por un lado y de cliente por el otro.
+Este comentario en `protocol.py` lo detalla bien
+
+```python
+#   Request  (client → server): [2 bytes uint16 BE: payload length][payload: UTF-8 CSV string]
+#   Response (server → client): [1 byte: 0x00=OK, 0x01=ERROR]
+```
+
+El cliente al hacer un request utiliza 2 bytes como header (big endian, como define el estándar de TCP) para indicar el tamaño del payload que acompaña al mensaje. El objetivo es que el server lea 2 bytes "fijos" y que a partir de estos pueda leer los N bytes "variables" que le siguen.
+
+El server por su parte, solamente responde un byte que puede significar un OK o un Error.
+
+
+Se hace uso de las configs del cliente:
+```yaml
+loop:
+  amount: 5
+  period: "5s"
+```
+Se utilizan para definir los reintentos al establecer la conexión inicial con el server.
+
+
+
+### Ej 6
+
+#### Como ejecutar
+
+Generar el compose con el script y ejecutar con el make como se venía haciendo previamente tras descomprimir los datasets zipeados.
+
+```bash
+unzip .data/dataset.zip -d .data/
+```
+
+#### Implementación
+
+Se elimina toda la lógica de la apuesta por cliente. En su lugar se pasan a leer los datasets correspondientes a c/u. Esto implica añadir un volúmen que monte el dataset propio de cada cliente en el mismo.
+
+Se implementa la lógica de los batches manteniendo la abstracción del lado del protocolo. (Se envían batches pero no se define de qué).
+Estos batches son las tiras de bytes, pero separadas por saltos de linea (tambien en bytes).
+El protocolo por el resto se mantiene igual.
+
+El cliente tiene 2 límites a la hora de armar los batches:
+1. **Límite de amount por config:** Delimita la cantidad máxima de bets que pueden incluirse en un batch independientemente de su tamaño. Es configurable en su `config.yaml`
+2. **Límite de KB's:** Delimia el máximo de bytes que se incluyen en un batch. Puede haber bets sumamente largas que sumadas no lleguen a alcanzar el número máx configurado, pero que sumando su peso excedan el umbral. No es configurable.
+
+La existencia de estos batches permite reducir la cantidad de mensajes enviados por red (y por ende reducir el overhead de los headers). Al realizarse la lectura del dataset on-demand (no cargar todo en memoria), si se detecta que la última bet leida causaría un exceso del máx en KB's de un batch, la misma se guarda en memoria y se reserva para la siguiente iteración.

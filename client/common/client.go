@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/op/go-logging"
 
@@ -15,12 +16,16 @@ import (
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/internal/protocol"
 )
 
+const maxBatchBytes = 8 * 1024
+
 var log = logging.MustGetLogger("log")
 
 type ClientConfig struct {
 	ID            string
 	ServerAddress string
 	MaxBatchSize  int
+	LoopAmount    int
+	LoopPeriod    time.Duration
 }
 
 type Client struct {
@@ -33,17 +38,22 @@ func NewClient(config ClientConfig) *Client {
 }
 
 func (c *Client) createClientSocket() error {
-	conn, err := net.Dial("tcp", c.config.ServerAddress)
-	if err != nil {
-		log.Criticalf(
-			"action: connect | result: fail | client_id: %v | error: %v",
-			c.config.ID,
-			err,
+	initial_amount := c.config.LoopAmount
+	for c.config.LoopAmount > 0 {
+		conn, err := net.Dial("tcp", c.config.ServerAddress)
+		if err == nil {
+			c.conn = conn
+			return nil
+		}
+		log.Errorf(
+			"action: connect | result: fail | client_id: %v | pending_retries: %v | error: %v",
+			c.config.ID, c.config.LoopAmount, err,
 		)
-		return err
+		time.Sleep(c.config.LoopPeriod)
+		c.config.LoopAmount--
 	}
-	c.conn = conn
-	return nil
+	log.Criticalf("action: connect | result: fail | client_id: %v | error: max retries reached", c.config.ID)
+	return fmt.Errorf("could not connect after %d attempts", initial_amount)
 }
 
 func (c *Client) Run() {
@@ -84,8 +94,10 @@ func (c *Client) sendAllBets() error {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
+	var pending *bet.Bet
 	for {
-		batch := c.readNextBatch(scanner)
+		var batch []bet.Bet
+		batch, pending = c.readNextBatch(scanner, pending)
 		if len(batch) == 0 {
 			break
 		}
@@ -96,8 +108,15 @@ func (c *Client) sendAllBets() error {
 	return nil
 }
 
-func (c *Client) readNextBatch(scanner *bufio.Scanner) []bet.Bet {
+func (c *Client) readNextBatch(scanner *bufio.Scanner, pending *bet.Bet) ([]bet.Bet, *bet.Bet) {
 	var batch []bet.Bet
+	var batchBytes int
+
+	if pending != nil {
+		batch = append(batch, *pending)
+		batchBytes += len(pending.ToCsvBytes())
+	}
+
 	for len(batch) < c.config.MaxBatchSize && scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -107,16 +126,23 @@ func (c *Client) readNextBatch(scanner *bufio.Scanner) []bet.Bet {
 		if len(fields) < 5 {
 			continue
 		}
-		batch = append(batch, bet.Bet{
+		b := bet.Bet{
 			Agency:    c.config.ID,
 			FirstName: fields[0],
 			LastName:  fields[1],
 			Document:  fields[2],
 			Birthdate: fields[3],
 			Number:    fields[4],
-		})
+		}
+		betSize := len(b.ToCsvBytes())
+		if batchBytes+betSize > maxBatchBytes {
+			log.Debug("action: read_next_batch | result: exceed max KBs | client_id: %v", c.config.ID)
+			return batch, &b
+		}
+		batch = append(batch, b)
+		batchBytes += betSize
 	}
-	return batch
+	return batch, nil
 }
 
 func (c *Client) sendBatch(bets []bet.Bet) error {

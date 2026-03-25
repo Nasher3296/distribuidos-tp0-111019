@@ -15,6 +15,8 @@ import (
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/internal/protocol"
 )
 
+const maxBatchBytes = 8 * 1024
+
 var log = logging.MustGetLogger("log")
 
 type ClientConfig struct {
@@ -78,8 +80,10 @@ func (c *Client) sendAllBets() {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
+	var pending *bet.Bet
 	for {
-		batch := c.readNextBatch(scanner)
+		var batch []bet.Bet
+		batch, pending = c.readNextBatch(scanner, pending)
 		if len(batch) == 0 {
 			break
 		}
@@ -89,8 +93,15 @@ func (c *Client) sendAllBets() {
 	}
 }
 
-func (c *Client) readNextBatch(scanner *bufio.Scanner) []bet.Bet {
+func (c *Client) readNextBatch(scanner *bufio.Scanner, pending *bet.Bet) ([]bet.Bet, *bet.Bet) {
 	var batch []bet.Bet
+	var batchBytes int
+
+	if pending != nil {
+		batch = append(batch, *pending)
+		batchBytes += len(pending.ToCsvBytes())
+	}
+
 	for len(batch) < c.config.MaxBatchSize && scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -100,16 +111,22 @@ func (c *Client) readNextBatch(scanner *bufio.Scanner) []bet.Bet {
 		if len(fields) < 5 {
 			continue
 		}
-		batch = append(batch, bet.Bet{
+		b := bet.Bet{
 			Agency:    c.config.ID,
 			FirstName: fields[0],
 			LastName:  fields[1],
 			Document:  fields[2],
 			Birthdate: fields[3],
 			Number:    fields[4],
-		})
+		}
+		betSize := len(b.ToCsvBytes())
+		if batchBytes+betSize > maxBatchBytes {
+			return batch, &b
+		}
+		batch = append(batch, b)
+		batchBytes += betSize
 	}
-	return batch
+	return batch, nil
 }
 
 func (c *Client) sendBatch(bets []bet.Bet) error {

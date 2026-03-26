@@ -182,6 +182,16 @@ Respetar el formato y contenido las entradas de logs descritas en los ejercicios
 
 ## Implementación del alumno
 
+## Pre requisitos
+
+Me tomé una libertad creativa de la que quizá deba arrepentirme. Actualicé la versión de go a 1.24 (me gustan más los iteradores) pensando en que todo queda dentro de docker. El tema es que los scripts de generación del compose se corren fuera de docker, por lo que podría llegar a haber alguna incompatibilidad ahí.
+
+Sería requisito entonces contar conuna versión de go >= a 1.24
+
+```bash
+ go version
+```
+
 ### General
 
 A lo largo del desarrollo del TP se generan algunos archivos `.sh`. Los mismos por lo general van a requerir que se les otorgue permiso de ejecución. Para ello se debe ejecutar para c/u:

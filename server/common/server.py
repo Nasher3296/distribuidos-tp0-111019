@@ -23,19 +23,24 @@ class Server:
         self._agencies_done = 0
         self._lottery_cond = threading.Condition()
         self._winners = {}
+        self._agency_slots = threading.Semaphore(number_of_agencies)
 
     def run(self):
         threads = []
         while self._running:
+            self._agency_slots.acquire()
+            if not self._running:
+                break
             try:
                 client_sock = self.__accept_new_connection()
-                t = threading.Thread(target=self.__handle_client_connection, args=(client_sock,), daemon=True)
-                t.start()
-                threads.append(t)
             except OSError as e:
                 if self._running:
                     logging.error(f"action: accept_connections | result: fail | error: {e}")
+                self._agency_slots.release()
                 break
+            t = threading.Thread(target=self.__handle_client_connection, args=(client_sock,), daemon=True)
+            t.start()
+            threads.append(t)
 
         for t in threads:
             t.join()
@@ -45,11 +50,13 @@ class Server:
         logging.info("action: sigterm_received | result: success")
         self._running = False
         self._server_socket.close()
+        self._agency_slots.release()
         logging.info("action: close_server_socket | result: success")
 
     def __handle_client_connection(self, client_sock):
         addr = client_sock.getpeername()
         agency_id = None
+        reached_done = False
         try:
             while self._running:
                 msg_type, payload = recv_message(client_sock)
@@ -67,6 +74,7 @@ class Server:
                     agency_id = int(payload.decode('utf-8'))
                     self.__notify_done()
                     send_ack(client_sock, True)
+                    reached_done = True
                     break
 
             with self._lottery_cond:
@@ -80,6 +88,8 @@ class Server:
 
         except Exception as e:
             logging.error(f"action: receive_message | result: fail | error: {e}")
+            if not reached_done:
+                self._agency_slots.release()
             try:
                 send_ack(client_sock, False)
             except Exception:

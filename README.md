@@ -454,3 +454,22 @@ En cuanto al cliente, ví dos caminos posibles (esto se repite en el punto 8) en
 2. La opción que no tomé. Una especie de bussy wait / poll por parte del cliente. En lugar de utilizar la misma conexión, una vez que el cliente envía el DONE podría cerrar el socket y automáticamente abrir una nueva conexión que haga el query. El server al detectar que aún no se realizó el sorteo debería responder a estas conexiones rechazando la query. El objetivo es no tener lockeado al cliente y que el server no deba persistir las conexiones en espera.
 
 Además, por el proceso secuencial de clientes, aunque los N clientes intentan conectarse a la vez van a ser aceptados de a uno.
+
+### Ej 8
+
+#### Como ejecutar
+
+Se ejecuta de igual forma que el ej 6.
+
+#### Implementación
+
+El cliente implementa la mísma lógica del punto anterior. Envía todos los batches + DONE + query, y se queda bloqueado en espera de la respuesta de la query. La alternativa es la misma que se planteó en el punto anterior.
+
+Para el manejo multi-hilo de los clientes, el server delega cada nueva conexión a un handler que corre en un nuevo hilo.
+Al finalizar el ciclo de escucha, se realiza join de los hilos para esperar a la finalización de todos, dado que cada hilo finaliza cerrando el socket de la conexión que mantiene con su cliente handleado.
+
+Como métodos se sincronización se utilizaron 3:
+
+1. Lock. Todos los hilos pueden querer acceder a disco de forma simultánea a la hora de querer guardar las bets. Con el lock manejamos esta competencia otorgandoles un acceso secuencial.
+2. Cond-Var. Se definió el atributo `_lottery_cond`, el cual espera a que se cumpla la condición que finalizaba el ciclo de escucha en el ej7. Que el número de agencies/clients finalza. El objetivo es bloquear a todos los hilos que manejan clientes hasta que los N clientes hayan finalizado el envío de sus batches. Tras eso se ejecuta el sorteo y se maneja el mensaje query de cada cliente.
+3. Semáforo. Esta última la acabo de notar mientras escribía este readme. Noté que podía darse el siguiente escenario: Espero 5 agencies, pero antes de que las 5 lleguen a enviar su DONE, llegan N agencies nuevas. Como aún no se cumplió la condición de los 5 DONE, el socket sigue escuchando y se aceptan estas nuevas N agencies que no deberían estar siendo manejadas. No es opción dejar de escuchar tras 5 conexiones, ya que podría haber conexiones fraudulentas (un cliente que no es una agencie por ejemplo). La implementación de este semáforo hace que se manejen hasta 5 (o el número esperado de agencies) clientes en simultáneo como máximo. Si un cliente alcanza el DONE no va a liberar su cupo, pero si uno falla antes entonces si que lo libera. De esta forma se garantiza que se reciban bets y su correspondiente DONE de solo 5 (o lo configurado) agencies.

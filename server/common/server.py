@@ -23,21 +23,22 @@ class Server:
     def run(self):
         waiting_sockets = []
 
-        for _ in range(self._number_of_agencies):
-            if not self._running:
-                break
+        while self._running and len(waiting_sockets) < self._number_of_agencies:
             try:
                 client_sock = self.__accept_new_connection()
-                agency_id = self.__receive_bets(client_sock)
-                waiting_sockets.append((agency_id, client_sock))
             except OSError as e:
                 if self._running:
                     logging.error(f"action: accept_connections | result: fail | error: {e}")
                 break
 
-        if self._running and len(waiting_sockets) == self._number_of_agencies:
-            self.__run_lottery()
+            agency_id = self.__receive_bets(client_sock)
+            if agency_id is not None:
+                waiting_sockets.append((agency_id, client_sock))
+            else:
+                client_sock.close()
 
+        if len(waiting_sockets) == self._number_of_agencies:
+            self.__run_lottery()
             for agency_id, sock in waiting_sockets:
                 self.__respond_to_query(agency_id, sock)
         else:

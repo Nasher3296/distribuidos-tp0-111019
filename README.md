@@ -424,3 +424,33 @@ El cliente tiene 2 límites a la hora de armar los batches:
 2. **Límite de KB's:** Delimia el máximo de bytes que se incluyen en un batch. Puede haber bets sumamente largas que sumadas no lleguen a alcanzar el número máx configurado, pero que sumando su peso excedan el umbral. No es configurable.
 
 La existencia de estos batches permite reducir la cantidad de mensajes enviados por red (y por ende reducir el overhead de los headers). Al realizarse la lectura del dataset on-demand (no cargar todo en memoria), si se detecta que la última bet leida causaría un exceso del máx en KB's de un batch, la misma se guarda en memoria y se reserva para la siguiente iteración.
+
+### Ej 7
+
+#### Como ejecutar
+
+Se ejecuta de igual forma que el ej 6.
+
+#### Implementación
+
+Por error mío implementé primero el punto 8 y luego me dí cuenta de que me había faltado el 7, por lo que siento un poco antinatural la implementación. Para no "adelantarme" al 8, me centré en hacer que todo el manejo de conexiones de este punto sea monohilo.
+
+El server solo va a escuchar conexiones hasta que N clientes/agencies se hayan conectado correctamente y realizado sus bets. Este valor N es configurable mediante la env-var del server `SERVER_NUMBER_OF_AGENCIES`.
+
+La idea para mantener el mono-hilo es la siguiente:
+* Aceptar de a una conexión por vez
+* Recibir los batches hasta el mensaje de fin de batch
+* Mantener abierta la conexión y acumular el scoket en `waiting_sockets`
+* El cliente envía el mensaje de query de winners, pero el server aún no va a escucharlo.
+* Sin cerrar dicha conexión, aceptar una nueva y repetir
+
+Este ciclo se corta con el sigterm o al haber alcanzado los N clientes esperados. Desde ese punto se cierra el socket que acepta conexiones.
+
+Una vez recibidos los N clientes con sus bets se procede al sorteo.
+Tras el sorteo, se iteran los `waiting_sockets` para en cada uno escuchar el mensaje de query y dar la respuesta, teniendo un finally que cierra el socket independientemente de si hay o no error.
+
+En cuanto al cliente, ví dos caminos posibles (esto se repite en el punto 8) en cuanto a la query de los winners:
+1. El que tomé. El cliente envía el DONE y automáticamente envía la query, quedandose bloqueado esperando a la respuesta. Esto implica esperar a que se procesen todos los demás clientes hasta alcanzar N + que se le responda la query a todos los clientes previos.
+2. La opción que no tomé. Una especie de bussy wait / poll por parte del cliente. En lugar de utilizar la misma conexión, una vez que el cliente envía el DONE podría cerrar el socket y automáticamente abrir una nueva conexión que haga el query. El server al detectar que aún no se realizó el sorteo debería responder a estas conexiones rechazando la query. El objetivo es no tener lockeado al cliente y que el server no deba persistir las conexiones en espera.
+
+Además, por el proceso secuencial de clientes, aunque los N clientes intentan conectarse a la vez van a ser aceptados de a uno.
